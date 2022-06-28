@@ -33,7 +33,7 @@ var analyticsHost = process.env.ANALYTICS_HOST || "voting-analytics";
 var analyticsPort = process.env.ANALYTICS_PORT || 8080;
 
 // Attempt to retrieve database password value from KeyVault
-if ("KEY_VAULT_NAME" in process.env) {
+async function retrieveVaultSecret() {
   try {
     var credential = new DefaultAzureCredential();
     const client = new SecretClient(url, credential);
@@ -49,8 +49,8 @@ if ("KEY_VAULT_NAME" in process.env) {
   {
     console.log('Failed to access keyvault: ' + e )
   }
-} 
-
+}
+if ("KEY_VAULT_NAME" in process.env) {  retrieveVaultSecret(); } 
 
 // Set up mySQL connection
 var mysql = require('mysql2');

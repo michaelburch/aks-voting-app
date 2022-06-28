@@ -19,7 +19,7 @@ var mySQLPort = process.env.MYSQL_PORT || 3306;
 var mySQLDatabase = process.env.MYSQL_DATABASE;
 
 // Attempt to retrieve database password value from KeyVault
-if ("KEY_VAULT_NAME" in process.env) {
+async function retrieveVaultSecret() {
   try {
     var credential = new DefaultAzureCredential();
     const client = new SecretClient(url, credential);
@@ -35,7 +35,8 @@ if ("KEY_VAULT_NAME" in process.env) {
   {
     console.log('Failed to access keyvault: ' + e )
   }
-} 
+}
+if ("KEY_VAULT_NAME" in process.env) {  retrieveVaultSecret(); } 
 
 // Set up mySQL connection
 var mysql = require('mysql2');
