@@ -36,9 +36,9 @@ var analyticsPort = process.env.ANALYTICS_PORT || 8080;
 async function retrieveVaultSecret() {
   try {
     var credential = new DefaultAzureCredential();
-    const client = new SecretClient(url, credential);
     var keyVaultName = process.env["KEY_VAULT_NAME"];
     var url = "https://" + keyVaultName + ".vault.azure.net";
+    const client = new SecretClient(url, credential);
     console.log('Configured to use KeyVault ' + url);
     var secretName = ("KEY_VAULT_SECRET" in process.env) ? process.env["KEY_VAULT_SECRET"] : "VOTE_SQL_PASS";
     var secret = await client.getSecret(secretName);
