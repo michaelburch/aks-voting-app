@@ -5,6 +5,8 @@ var cookieParser = require('cookie-parser')
 var request = require('request');
 var os = require("os");
 var morgan  = require('morgan');
+const { SecretClient } = require("@azure/keyvault-secrets");
+const { DefaultAzureCredential } = require("@azure/identity");
 
 // Set up express
 var app = express();
@@ -29,6 +31,26 @@ var mySQLDatabase = process.env.MYSQL_DATABASE;
 var mySQLPort = process.env.MYSQL_PORT || 3306;
 var analyticsHost = process.env.ANALYTICS_HOST || "voting-analytics";
 var analyticsPort = process.env.ANALYTICS_PORT || 8080;
+
+// Attempt to retrieve database password value from KeyVault
+if ("KEY_VAULT_NAME" in process.env) {
+  try {
+    var credential = new DefaultAzureCredential();
+    const client = new SecretClient(url, credential);
+    var keyVaultName = process.env["KEY_VAULT_NAME"];
+    var url = "https://" + keyVaultName + ".vault.azure.net";
+    console.log('Configured to use KeyVault ' + url);
+    var secretName = ("KEY_VAULT_SECRET" in process.env) ? process.env["KEY_VAULT_SECRET"] : "VOTE_SQL_PASS";
+    var secret = await client.getSecret(secretName);
+    console.log('Retrieved vault Secret ' + secretName);
+    mySQLPassword = secret.value
+  }
+  catch (e)
+  {
+    console.log('Failed to access keyvault: ' + e )
+  }
+} 
+
 
 // Set up mySQL connection
 var mysql = require('mysql2');
