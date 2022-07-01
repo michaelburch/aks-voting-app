@@ -11,6 +11,10 @@
     <script language="JavaScript">
         function send(form) {
         }
+        function login() {
+          var origin=window.location.href;
+          window.location.href = "/.auth/login/aad?post_login_redirect_uri=" + origin
+        }
     </script>
 </head>
 <body>

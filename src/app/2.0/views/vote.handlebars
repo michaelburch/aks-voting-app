@@ -16,8 +16,11 @@
   
     <div id="footer">
       {{#if showDetails.isEnabled }}
+      <br/><a href="#" onclick="login(); return false;">Log in</a><br/>
       host: {{ showDetails.hostName }}<br/>
       store: mysql</br/>
+      principal name: {{ showDetails.principalName }} <br/>
+      principal id: {{ showDetails.principalId }} <br/>
       {{/if}}
       {{#if featureFlag.isEnabled }}
       feature flag: {{#if featureFlag.isSet }}set{{else}}<a href="#" onclick="document.setfeatureflag.submit();">set</a>{{/if}} | {{#if featureFlag.isSet }}<a href="#" onclick="document.clearfeatureflag.submit();">clear</a>{{else}}clear{{/if}}
