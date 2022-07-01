@@ -8,18 +8,9 @@ var morgan  = require('morgan');
 const { SecretClient } = require("@azure/keyvault-secrets");
 const { DefaultAzureCredential } = require("@azure/identity");
 
-// Set up express
-var app = express();
-app.use(cookieParser());
-app.engine('handlebars', exphbs({defaultLayout: 'main'}));
-app.set('view engine', 'handlebars');
-app.use(express.static('static'));
-app.use(bodyParser.urlencoded({ extended: true })); 
-app.use(morgan('combined'));
-
 // Configuration and potential overrides
 var port = process.env.PORT || 8080;
-var title = process.env.TITLE || "AKS Voting App";
+var title = process.env.TITLE || "ACA Voting App";
 var vote1 = process.env.VOTE1VALUE || "Cats";
 var vote2 = process.env.VOTE2VALUE || "Dogs";
 var showDetails = process.env.SHOWDETAILS || false;
@@ -31,41 +22,6 @@ var mySQLDatabase = process.env.MYSQL_DATABASE;
 var mySQLPort = process.env.MYSQL_PORT || 3306;
 var analyticsHost = process.env.ANALYTICS_HOST || "voting-analytics";
 var analyticsPort = process.env.ANALYTICS_PORT || 8080;
-
-// Attempt to retrieve database password value from KeyVault
-async function retrieveVaultSecret() {
-  try {
-    var credential = new DefaultAzureCredential();
-    var keyVaultName = process.env["KEY_VAULT_NAME"];
-    var url = "https://" + keyVaultName + ".vault.azure.net";
-    const client = new SecretClient(url, credential);
-    console.log('Configured to use KeyVault ' + url);
-    var secretName = ("KEY_VAULT_SECRET" in process.env) ? process.env["KEY_VAULT_SECRET"] : "VOTE_SQL_PASS";
-    var secret = await client.getSecret(secretName);
-    console.log('Retrieved vault Secret ' + secretName);
-    mySQLPassword = secret.value
-  }
-  catch (e)
-  {
-    console.log('Failed to access keyvault: ' + e )
-  }
-}
-if ("KEY_VAULT_NAME" in process.env) {  retrieveVaultSecret(); } 
-
-// Set up mySQL connection
-var mysql = require('mysql2');
-var config =
-{
-  host                : mySQLHost,
-  user                : mySQLUser,
-  password            : mySQLPassword,
-  database            : mySQLDatabase,
-  port                : mySQLPort,
-  waitForConnections  : true,
-  connectionLimit     : 5,
-  queueLimit          : 0
-};
-var pool = mysql.createPool(config);
 
 function propagateTracingHeaders(req) {
   var headers = {};
@@ -88,73 +44,123 @@ function propagateTracingHeaders(req) {
   return headers;
 }
 
-// Set up voting-analytics url
-var analyticsServerUrl = 'http://' + analyticsHost + ':' + analyticsPort + '/analytics'
-
-// GET - display vote form and analytics
-app.get('/', function (req, res) {
-
-  var isFeatureFlagSet = false;
-  if (req.cookies && req.cookies.featureflag) {
-    isFeatureFlagSet = true;
+// Attempt to retrieve database password value from KeyVault
+async function main() {
+  if ("KEY_VAULT_NAME" in process.env) {
+    try {
+      var credential = new DefaultAzureCredential();
+      var keyVaultName = process.env["KEY_VAULT_NAME"];
+      var url = "https://" + keyVaultName + ".vault.azure.net";
+      const client = new SecretClient(url, credential);
+      console.log('Configured to use KeyVault ' + url);
+      var secretName = ("KEY_VAULT_SECRET" in process.env) ? process.env["KEY_VAULT_SECRET"] : "VOTE_SQL_PASS";
+      var secret = await client.getSecret(secretName);
+      console.log('Retrieved vault Secret ' + secretName);
+      mySQLPassword = secret.value
+    }
+    catch (e)
+    {
+      console.log('Failed to access keyvault: ' + e )
+    }
   }
+  // Set up mySQL connection
+  var mysql = require('mysql2');
+  var config =
+  {
+    host                : mySQLHost,
+    user                : mySQLUser,
+    password            : mySQLPassword,
+    database            : mySQLDatabase,
+    port                : mySQLPort,
+    waitForConnections  : true,
+    connectionLimit     : 5,
+    queueLimit          : 0
+  };
+  var pool = mysql.createPool(config);
 
-  request.get( { headers: propagateTracingHeaders(req), url: analyticsServerUrl, json: true }, (analyticsError, analyticsResponse, analyticsBody) => {
-    if (analyticsError) { return console.log(analyticsError); }
-    var analytics = analyticsBody.text;
-    
-    res.render('vote', {
-      featureFlag: {
-        isEnabled: String(featureFlag) == "true",
-        isSet: isFeatureFlagSet
-      },
-      title: title,
-      vote1: vote1,
-      vote2: vote2,
-      analytics: analytics,
-      showDetails: { 
-        isEnabled: String(showDetails) == "true",
-        hostName: os.hostname()
-      }
+  // Set up voting-analytics url
+  var analyticsServerUrl = 'http://' + analyticsHost + ':' + analyticsPort + '/analytics'
+  
+  // Set up express
+  var app = express();
+  app.use(cookieParser());
+  app.engine('handlebars', exphbs.engine({defaultLayout: 'main'}));
+  app.set('view engine', 'handlebars');
+  app.use(express.static('static'));
+  app.use(bodyParser.urlencoded({ extended: true })); 
+  app.use(morgan('combined'));
+  
+  // GET - display vote form and analytics
+  app.get('/', function (req, res) {
+
+    var isFeatureFlagSet = false;
+    if (req.cookies && req.cookies.featureflag) {
+      isFeatureFlagSet = true;
+    }
+
+    request.get( { headers: propagateTracingHeaders(req), url: analyticsServerUrl, json: true }, (analyticsError, analyticsResponse, analyticsBody) => {
+      if (analyticsError) { return console.log(analyticsError); }
+      var analytics = analyticsBody.text;
+      
+      res.render('vote', {
+        featureFlag: {
+          isEnabled: String(featureFlag) == "true",
+          isSet: isFeatureFlagSet
+        },
+        title: title,
+        vote1: vote1,
+        vote2: vote2,
+        analytics: analytics,
+        showDetails: { 
+          isEnabled: String(showDetails) == "true",
+          hostName: os.hostname(),
+          principalName: req.get('X-MS-CLIENT-PRINCIPAL-NAME'),
+          principalId: req.get('X-MS-CLIENT-PRINCIPAL-ID')
+        }
+      });
     });
   });
-});
 
-// POST - add a new vote, then render vote form and analytics
-app.post('/', function (req, res) {
+  // POST - add a new vote, then render vote form and analytics
+  app.post('/', function (req, res) {
+    
+    var vote = req.body['vote'];
+
+    if (vote == 'reset') {
+
+      pool.query('DELETE FROM azurevote', function (error, results, fields) {
+        if (error) throw error;
+      });
+
+    } else {
+
+      pool.query('INSERT INTO azurevote (votevalue) VALUES (?)', [vote], function (error, results, fields) {
+        if (error) throw error;
+      });
+    }
+
+    res.redirect('/');
+  });
+
+  // POST - set or clear feature flag
+  app.post('/featureflag/:action(set|clear)', function (req, res) {
+    var action = req.params.action;
+
+    if (action === 'set') {
+      res.cookie('featureflag', 'on', { expires: new Date(Date.now() + 900000), path: '/' });
+    } else {
+      res.clearCookie('featureflag', { expires: new Date(Date.now() + 900000), path: '/' });
+    }
   
-  var vote = req.body['vote'];
+    res.redirect('/');
+  });
 
-  if (vote == 'reset') {
+  // Set up listener
+  app.listen(port, function () {
+    console.log("Listening on: http://%s:%s", os.hostname(), port);
+  });
 
-    pool.query('DELETE FROM azurevote', function (error, results, fields) {
-      if (error) throw error;
-    });
+}
 
-  } else {
+main();
 
-    pool.query('INSERT INTO azurevote (votevalue) VALUES (?)', [vote], function (error, results, fields) {
-      if (error) throw error;
-    });
-  }
-
-  res.redirect('/');
-});
-
-// POST - set or clear feature flag
-app.post('/featureflag/:action(set|clear)', function (req, res) {
-  var action = req.params.action;
-
-  if (action === 'set') {
-    res.cookie('featureflag', 'on', { expires: new Date(Date.now() + 900000), path: '/' });
-  } else {
-    res.clearCookie('featureflag', { expires: new Date(Date.now() + 900000), path: '/' });
-  }
- 
-  res.redirect('/');
-});
-
-// Set up listener
-app.listen(port, function () {
-  console.log("Listening on: http://%s:%s", os.hostname(), port);
-});
